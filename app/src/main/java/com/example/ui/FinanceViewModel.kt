@@ -33,13 +33,17 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     val authManager = com.example.auth.AuthManager(application)
     val currentUser = authManager.currentUser
 
-    private val repository: FinanceRepository
+    private val db = AppDatabase.getDatabase(application)
+    private val repository: FinanceRepository = FinanceRepository(db.transactionDao(), db.subscriptionDao(), db.budgetDao())
     private val notificationManager = FinanceNotificationManager(application)
     private val userPreferences = UserPreferencesManager(application)
 
-    val transactions: StateFlow<List<TransactionEntity>>
-    val subscriptions: StateFlow<List<SubscriptionEntity>>
-    val budgets: StateFlow<List<BudgetEntity>>
+    val transactions: StateFlow<List<TransactionEntity>> = repository.allTransactions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val subscriptions: StateFlow<List<SubscriptionEntity>> = repository.allSubscriptions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val budgets: StateFlow<List<BudgetEntity>> = repository.allBudgets
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val baseCurrency: StateFlow<String> = userPreferences.baseCurrencyFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, "USD")
@@ -56,6 +60,40 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     val isDarkMode: StateFlow<Boolean> = userPreferences.isDarkModeFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
+    val isBalanceHidden: StateFlow<Boolean> = userPreferences.isBalanceHiddenFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val isScreenPrivacyEnabled: StateFlow<Boolean> = userPreferences.isScreenPrivacyEnabledFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val autoLockTimeoutSeconds: StateFlow<Int> = userPreferences.autoLockTimeoutSecondsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // High-performance reactive totals cached in ViewModel to eliminate heavy UI recalculations
+    val totalIncome: StateFlow<Double> = combine(transactions, baseCurrency) { txList, curr ->
+        var sum = 0.0
+        for (tx in txList) {
+            if (tx.type == "INCOME") {
+                sum += CurrencyManager.convert(tx.amount, tx.currency, curr)
+            }
+        }
+        sum
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val totalExpenses: StateFlow<Double> = combine(transactions, baseCurrency) { txList, curr ->
+        var sum = 0.0
+        for (tx in txList) {
+            if (tx.type != "INCOME") {
+                sum += CurrencyManager.convert(tx.amount, tx.currency, curr)
+            }
+        }
+        sum
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val netBalance: StateFlow<Double> = combine(totalIncome, totalExpenses) { inc, exp ->
+        inc - exp
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
     private val _lastSyncTimestamp = MutableStateFlow(0L)
     val lastSyncTimestamp: StateFlow<Long> = _lastSyncTimestamp.asStateFlow()
 
@@ -66,18 +104,6 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
     val syncMessage: StateFlow<String?> = _syncMessage.asStateFlow()
 
     init {
-        val db = AppDatabase.getDatabase(application)
-        repository = FinanceRepository(db.transactionDao(), db.subscriptionDao(), db.budgetDao())
-
-        transactions = repository.allTransactions
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-        subscriptions = repository.allSubscriptions
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-        budgets = repository.allBudgets
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
         // Check if biometric/security was previously enabled
         val securityEnabled = BiometricSecurityManager.isSecurityEnabled(application)
         _isBiometricEnabled.value = BiometricSecurityManager.isBiometricEnabled(application)
@@ -127,6 +153,57 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun toggleBalanceHidden() {
+        viewModelScope.launch {
+            userPreferences.setBalanceHidden(!isBalanceHidden.value)
+        }
+    }
+
+    fun setBalanceHidden(hidden: Boolean) {
+        viewModelScope.launch {
+            userPreferences.setBalanceHidden(hidden)
+        }
+    }
+
+    fun setScreenPrivacyEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            userPreferences.setScreenPrivacyEnabled(enabled)
+        }
+    }
+
+    fun toggleScreenPrivacy() {
+        viewModelScope.launch {
+            userPreferences.setScreenPrivacyEnabled(!isScreenPrivacyEnabled.value)
+        }
+    }
+
+    fun setAutoLockTimeoutSeconds(seconds: Int) {
+        viewModelScope.launch {
+            userPreferences.setAutoLockTimeoutSeconds(seconds)
+        }
+    }
+
+    fun setAutoLockTimeout(seconds: Int) {
+        setAutoLockTimeoutSeconds(seconds)
+    }
+
+    fun onAppResumed(timeInBackgroundMs: Long) {
+        val timeoutSec = autoLockTimeoutSeconds.value
+        if (timeoutSec > 0 && BiometricSecurityManager.isSecurityEnabled(getApplication())) {
+            val thresholdMs = timeoutSec * 1000L
+            if (timeInBackgroundMs >= thresholdMs) {
+                _isLocked.value = true
+            }
+        }
+    }
+
+    fun clearAllData() {
+        viewModelScope.launch {
+            repository.clearAllData()
+            checkBalanceAndUpcomingNotifications()
+        }
+    }
+
     fun clearSyncMessage() {
         _syncMessage.value = null
     }
@@ -141,7 +218,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         currency: String,
         isTaxDeductible: Boolean,
         taxCategory: String,
-        receiptImagePath: String = ""
+        receiptImagePath: String = "",
+        locationName: String = "",
+        latitude: Double? = null,
+        longitude: Double? = null
     ) {
         viewModelScope.launch {
             val tx = TransactionEntity(
@@ -154,7 +234,10 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
                 currency = currency,
                 isTaxDeductible = isTaxDeductible,
                 taxCategory = taxCategory.trim(),
-                receiptImagePath = receiptImagePath
+                receiptImagePath = receiptImagePath,
+                locationName = locationName.trim(),
+                latitude = latitude,
+                longitude = longitude
             )
             repository.insertTransaction(tx)
 

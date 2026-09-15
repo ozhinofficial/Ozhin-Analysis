@@ -230,15 +230,16 @@ object FinanceExportManager {
         val file = File(context.cacheDir, "Finance_Ledger_${System.currentTimeMillis()}.csv")
         file.bufferedWriter().use { writer ->
             // Header
-            writer.write("ID,Date,Type,Title,Category,Amount,Currency,AmountInBase($baseCurrency),TaxDeductible,TaxCategory,Notes\n")
+            writer.write("ID,Date,Type,Title,Category,Location,Amount,Currency,AmountInBase($baseCurrency),TaxDeductible,TaxCategory,Notes\n")
             transactions.forEach { tx ->
                 val baseAmt = CurrencyManager.convert(tx.amount, tx.currency, baseCurrency)
                 val cleanTitle = tx.title.replace("\"", "\"\"")
                 val cleanNotes = tx.notes.replace("\"", "\"\"")
                 val cleanTaxCat = tx.taxCategory.replace("\"", "\"\"")
+                val cleanLoc = tx.locationName.replace("\"", "\"\"")
                 val dateStr = dateFormat.format(Date(tx.date))
                 writer.write(
-                    "${tx.id},\"$dateStr\",\"${tx.type}\",\"$cleanTitle\",\"${tx.category}\",${tx.amount},\"${tx.currency}\",\"$baseAmt\",${tx.isTaxDeductible},\"$cleanTaxCat\",\"$cleanNotes\"\n"
+                    "${tx.id},\"$dateStr\",\"${tx.type}\",\"$cleanTitle\",\"${tx.category}\",\"$cleanLoc\",${tx.amount},\"${tx.currency}\",\"$baseAmt\",${tx.isTaxDeductible},\"$cleanTaxCat\",\"$cleanNotes\"\n"
                 )
             }
         }
@@ -256,15 +257,16 @@ object FinanceExportManager {
         val file = File(context.cacheDir, "Tax_Deduction_Report_${System.currentTimeMillis()}.csv")
         val deductible = transactions.filter { it.isTaxDeductible }
         file.bufferedWriter().use { writer ->
-            writer.write("Date,Tax Category,Expense Description,Original Amount,Currency,Converted Amount ($baseCurrency),Notes\n")
+            writer.write("Date,Tax Category,Expense Description,Location,Original Amount,Currency,Converted Amount ($baseCurrency),Notes\n")
             deductible.forEach { tx ->
                 val baseAmt = CurrencyManager.convert(tx.amount, tx.currency, baseCurrency)
                 val dateStr = dateFormat.format(Date(tx.date))
                 val desc = tx.title.replace("\"", "\"\"")
                 val notes = tx.notes.replace("\"", "\"\"")
                 val taxCat = (if (tx.taxCategory.isNotBlank()) tx.taxCategory else tx.category).replace("\"", "\"\"")
+                val cleanLoc = tx.locationName.replace("\"", "\"\"")
                 writer.write(
-                    "\"$dateStr\",\"$taxCat\",\"$desc\",${tx.amount},\"${tx.currency}\",\"$baseAmt\",\"$notes\"\n"
+                    "\"$dateStr\",\"$taxCat\",\"$desc\",\"$cleanLoc\",${tx.amount},\"${tx.currency}\",\"$baseAmt\",\"$notes\"\n"
                 )
             }
         }

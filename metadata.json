@@ -1,6 +1,8 @@
 {
-  "name": "Finance Tracker",
+  "name": "Ozhin Finance Tracker",
   "description": "Smart finance tracker with income and expense tracking, notes, interactive monthly habit charts, recurring subscriptions, multi-currency conversion, cloud sync, biometric security, balance warnings, bill alerts, and PDF/CSV export for tax compliance.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

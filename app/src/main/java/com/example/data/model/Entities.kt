@@ -1,9 +1,19 @@
 package com.example.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "transactions")
+@Entity(
+    tableName = "transactions",
+    indices = [
+        Index(value = ["date"]),
+        Index(value = ["category"]),
+        Index(value = ["type"]),
+        Index(value = ["isTaxDeductible"]),
+        Index(value = ["currency"])
+    ]
+)
 data class TransactionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val title: String,
@@ -16,10 +26,20 @@ data class TransactionEntity(
     val isTaxDeductible: Boolean = false,
     val taxCategory: String = "",
     val receiptNotes: String = "",
-    val receiptImagePath: String = ""
+    val receiptImagePath: String = "",
+    val locationName: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
-@Entity(tableName = "subscriptions")
+@Entity(
+    tableName = "subscriptions",
+    indices = [
+        Index(value = ["nextDueDate"]),
+        Index(value = ["isActive"]),
+        Index(value = ["category"])
+    ]
+)
 data class SubscriptionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
@@ -33,7 +53,13 @@ data class SubscriptionEntity(
     val reminderDaysBefore: Int = 3
 )
 
-@Entity(tableName = "budgets")
+@Entity(
+    tableName = "budgets",
+    indices = [
+        Index(value = ["monthYear"]),
+        Index(value = ["category", "monthYear"])
+    ]
+)
 data class BudgetEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val category: String,

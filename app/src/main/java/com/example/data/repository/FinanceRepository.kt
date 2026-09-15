@@ -57,6 +57,12 @@ class FinanceRepository(
         if (budgets.isNotEmpty()) budgetDao.insertAll(budgets)
     }
 
+    suspend fun clearAllData() {
+        transactionDao.deleteAll()
+        subscriptionDao.deleteAll()
+        budgetDao.deleteAll()
+    }
+
     suspend fun seedDefaultDataIfEmpty() {
         val existing = transactionDao.getAllTransactions().first()
         if (existing.isNotEmpty()) return

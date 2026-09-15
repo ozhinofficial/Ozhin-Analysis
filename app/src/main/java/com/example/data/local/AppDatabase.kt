@@ -14,7 +14,7 @@ import com.example.data.model.TransactionEntity
         SubscriptionEntity::class,
         BudgetEntity::class
     ],
-    version = 2,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -32,7 +32,8 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "finance_tracker_db"
-                ).fallbackToDestructiveMigration()
+                ).fallbackToDestructiveMigration(dropAllTables = false)
+                .enableMultiInstanceInvalidation()
                 .build()
                 INSTANCE = instance
                 instance

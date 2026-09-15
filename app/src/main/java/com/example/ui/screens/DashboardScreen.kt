@@ -28,8 +28,12 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -88,46 +92,55 @@ fun DashboardScreen(
     onAddTransactionClick: () -> Unit,
     onDeleteTransaction: (TransactionEntity) -> Unit,
     onNavigateToSubscriptions: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isBalanceHidden: Boolean = false,
+    onToggleHideBalance: (() -> Unit)? = null,
+    totalIncome: Double? = null,
+    totalExpenses: Double? = null,
+    netBalance: Double? = null
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("ALL") } // ALL, EXPENSE, INCOME, DEDUCTIBLE
     var transactionToDelete by remember { mutableStateOf<TransactionEntity?>(null) }
     var viewingTransactionDetail by remember { mutableStateOf<TransactionEntity?>(null) }
 
-    // Calculate totals in base currency
-    var totalIncome = 0.0
-    var totalExpense = 0.0
-    transactions.forEach {
-        val converted = CurrencyManager.convert(it.amount, it.currency, baseCurrency)
-        if (it.type == "INCOME") totalIncome += converted else totalExpense += converted
+    // Fast reactive calculations with memoized fallback
+    val actualIncome = totalIncome ?: remember(transactions, baseCurrency) {
+        transactions.filter { it.type == "INCOME" }.sumOf { CurrencyManager.convert(it.amount, it.currency, baseCurrency) }
     }
-    val netBalance = totalIncome - totalExpense
-    val isLowBalance = netBalance < lowBalanceThreshold
+    val actualExpense = totalExpenses ?: remember(transactions, baseCurrency) {
+        transactions.filter { it.type == "EXPENSE" }.sumOf { CurrencyManager.convert(it.amount, it.currency, baseCurrency) }
+    }
+    val actualBalance = netBalance ?: (actualIncome - actualExpense)
+    val isLowBalance = actualBalance < lowBalanceThreshold
 
     // Upcoming urgent bills (due in <= 3 days)
-    val now = System.currentTimeMillis()
-    val upcomingBills = subscriptions.filter { it.isActive }.filter {
-        val diff = it.nextDueDate - now
-        val days = diff / (1000 * 60 * 60 * 24)
-        days in 0..3
+    val upcomingBills = remember(subscriptions) {
+        val now = System.currentTimeMillis()
+        subscriptions.filter { it.isActive }.filter {
+            val diff = it.nextDueDate - now
+            val days = diff / (1000 * 60 * 60 * 24)
+            days in 0..3
+        }
     }
 
-    // Filter transactions
-    val filteredTransactions = transactions.filter { tx ->
-        val matchesSearch = searchQuery.isBlank() ||
-                tx.title.contains(searchQuery, ignoreCase = true) ||
-                tx.notes.contains(searchQuery, ignoreCase = true) ||
-                tx.category.contains(searchQuery, ignoreCase = true)
+    // Filter transactions (memoized to eliminate UI jank during recomposition)
+    val filteredTransactions = remember(transactions, searchQuery, selectedFilter) {
+        transactions.filter { tx ->
+            val matchesSearch = searchQuery.isBlank() ||
+                    tx.title.contains(searchQuery, ignoreCase = true) ||
+                    tx.notes.contains(searchQuery, ignoreCase = true) ||
+                    tx.category.contains(searchQuery, ignoreCase = true)
 
-        val matchesType = when (selectedFilter) {
-            "EXPENSE" -> tx.type == "EXPENSE"
-            "INCOME" -> tx.type == "INCOME"
-            "DEDUCTIBLE" -> tx.isTaxDeductible
-            else -> true
+            val matchesType = when (selectedFilter) {
+                "EXPENSE" -> tx.type == "EXPENSE"
+                "INCOME" -> tx.type == "INCOME"
+                "DEDUCTIBLE" -> tx.isTaxDeductible
+                else -> true
+            }
+
+            matchesSearch && matchesType
         }
-
-        matchesSearch && matchesType
     }
 
     Box(modifier = modifier.fillMaxSize()) {
@@ -141,10 +154,12 @@ fun DashboardScreen(
             // 1. Total Net Balance Hero Card
             item {
                 BalanceHeroCard(
-                    netBalance = netBalance,
-                    totalIncome = totalIncome,
-                    totalExpense = totalExpense,
-                    baseCurrency = baseCurrency
+                    netBalance = actualBalance,
+                    totalIncome = actualIncome,
+                    totalExpense = actualExpense,
+                    baseCurrency = baseCurrency,
+                    isBalanceHidden = isBalanceHidden,
+                    onToggleHideBalance = onToggleHideBalance
                 )
             }
 
@@ -152,7 +167,7 @@ fun DashboardScreen(
             if (isLowBalance) {
                 item {
                     BalanceWarningBanner(
-                        currentBalance = netBalance,
+                        currentBalance = actualBalance,
                         threshold = lowBalanceThreshold,
                         baseCurrency = baseCurrency
                     )
@@ -269,6 +284,7 @@ fun DashboardScreen(
                     TransactionItemRow(
                         transaction = tx,
                         baseCurrency = baseCurrency,
+                        isBalanceHidden = isBalanceHidden,
                         onClick = { viewingTransactionDetail = tx },
                         onDelete = { transactionToDelete = tx }
                     )
@@ -348,7 +364,7 @@ fun DashboardScreen(
                     ) {
                         Text(text = "Amount:", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            text = CurrencyManager.formatAmount(tx.amount, tx.currency),
+                            text = if (isBalanceHidden) "••••••" else CurrencyManager.formatAmount(tx.amount, tx.currency),
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -359,7 +375,7 @@ fun DashboardScreen(
                         ) {
                             Text(text = "In Base ($baseCurrency):", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
-                                text = CurrencyManager.formatAmount(CurrencyManager.convert(tx.amount, tx.currency, baseCurrency), baseCurrency),
+                                text = if (isBalanceHidden) "≈ ••••••" else CurrencyManager.formatAmount(CurrencyManager.convert(tx.amount, tx.currency, baseCurrency), baseCurrency),
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -415,6 +431,48 @@ fun DashboardScreen(
                         }
                     }
 
+                    if (tx.locationName.isNotBlank() || (tx.latitude != null && tx.longitude != null)) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.fillMaxWidth().testTag("detail_location_section")
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Place,
+                                        contentDescription = null,
+                                        tint = EmeraldPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Expense Store / Location:",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                                if (tx.locationName.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = tx.locationName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                                if (tx.latitude != null && tx.longitude != null) {
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = String.format(Locale.US, "GPS Coordinates: %.4f, %.4f", tx.latitude, tx.longitude),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     if (tx.receiptImagePath.isNotBlank()) {
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -464,7 +522,9 @@ fun BalanceHeroCard(
     totalIncome: Double,
     totalExpense: Double,
     baseCurrency: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isBalanceHidden: Boolean = false,
+    onToggleHideBalance: (() -> Unit)? = null
 ) {
     Card(
         modifier = modifier
@@ -494,14 +554,32 @@ fun BalanceHeroCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(
-                            text = "Net Account Balance",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "Net Account Balance",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (onToggleHideBalance != null) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                IconButton(
+                                    onClick = onToggleHideBalance,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .testTag("btn_toggle_balance_visibility")
+                                ) {
+                                    Icon(
+                                        imageVector = if (isBalanceHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (isBalanceHidden) "Show Balance" else "Hide Balance",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = CurrencyManager.formatAmount(netBalance, baseCurrency),
+                            text = if (isBalanceHidden) "${CurrencyManager.getSymbol(baseCurrency)} ••••••" else CurrencyManager.formatAmount(netBalance, baseCurrency),
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -561,7 +639,7 @@ fun BalanceHeroCard(
                                     color = IncomeGreen
                                 )
                                 Text(
-                                    text = CurrencyManager.formatAmount(totalIncome, baseCurrency),
+                                    text = if (isBalanceHidden) "+ ••••••" else CurrencyManager.formatAmount(totalIncome, baseCurrency),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = IncomeGreen,
@@ -604,7 +682,7 @@ fun BalanceHeroCard(
                                     color = ExpenseRed
                                 )
                                 Text(
-                                    text = CurrencyManager.formatAmount(totalExpense, baseCurrency),
+                                    text = if (isBalanceHidden) "- ••••••" else CurrencyManager.formatAmount(totalExpense, baseCurrency),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = ExpenseRed,
@@ -737,7 +815,8 @@ fun TransactionItemRow(
     baseCurrency: String,
     onClick: () -> Unit,
     onDelete: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isBalanceHidden: Boolean = false
 ) {
     val isIncome = transaction.type == "INCOME"
     val df = SimpleDateFormat("MMM dd", Locale.getDefault())
@@ -855,6 +934,34 @@ fun TransactionItemRow(
                             }
                         }
                     }
+
+                    if (transaction.locationName.isNotBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Place,
+                                    contentDescription = "Location tagged",
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = transaction.locationName,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -863,7 +970,7 @@ fun TransactionItemRow(
             // Amount
             Column(horizontalAlignment = Alignment.End) {
                 val sign = if (isIncome) "+" else "-"
-                val amountText = "$sign${CurrencyManager.formatAmount(transaction.amount, transaction.currency)}"
+                val amountText = if (isBalanceHidden) "••••••" else "$sign${CurrencyManager.formatAmount(transaction.amount, transaction.currency)}"
                 Text(
                     text = amountText,
                     style = MaterialTheme.typography.titleSmall,
@@ -873,7 +980,7 @@ fun TransactionItemRow(
                 if (transaction.currency != baseCurrency) {
                     val baseAmt = CurrencyManager.convert(transaction.amount, transaction.currency, baseCurrency)
                     Text(
-                        text = "≈ ${CurrencyManager.formatAmount(baseAmt, baseCurrency)}",
+                        text = if (isBalanceHidden) "≈ ••••••" else "≈ ${CurrencyManager.formatAmount(baseAmt, baseCurrency)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

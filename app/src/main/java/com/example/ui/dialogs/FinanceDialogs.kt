@@ -1,5 +1,8 @@
 package com.example.ui.dialogs
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -20,13 +24,19 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -35,6 +45,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -44,12 +55,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -57,10 +70,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.ui.camera.ReceiptCameraDialog
+import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.ExpenseRed
 import com.example.ui.theme.IncomeGreen
 import com.example.util.CurrencyManager
+import com.example.util.LocationTracker
+import kotlinx.coroutines.launch
 import java.io.File
+import java.util.Locale
 
 val DefaultCategories = listOf(
     "Food & Dining",
@@ -103,9 +120,15 @@ fun AddTransactionDialog(
         currency: String,
         isTaxDeductible: Boolean,
         taxCategory: String,
-        receiptImagePath: String
+        receiptImagePath: String,
+        locationName: String,
+        latitude: Double?,
+        longitude: Double?
     ) -> Unit
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
     var title by remember { mutableStateOf("") }
     var amountText by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("EXPENSE") }
@@ -116,6 +139,31 @@ fun AddTransactionDialog(
     var taxCategory by remember { mutableStateOf("Home Office Expense") }
     var receiptImagePath by remember { mutableStateOf("") }
     var showCameraDialog by remember { mutableStateOf(false) }
+
+    // Expense Location Tagging
+    var locationName by remember { mutableStateOf("") }
+    var latitude by remember { mutableStateOf<Double?>(null) }
+    var longitude by remember { mutableStateOf<Double?>(null) }
+    var isLocating by remember { mutableStateOf(false) }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            isLocating = true
+            coroutineScope.launch {
+                val loc = LocationTracker.getCurrentLocation(context)
+                if (loc != null) {
+                    locationName = loc.placeName
+                    latitude = loc.latitude
+                    longitude = loc.longitude
+                }
+                isLocating = false
+            }
+        }
+    }
 
     var categoryExpanded by remember { mutableStateOf(false) }
     var currencyExpanded by remember { mutableStateOf(false) }
@@ -213,7 +261,7 @@ fun AddTransactionDialog(
                             readOnly = true,
                             label = { Text("Currency") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = currencyExpanded) },
-                            modifier = Modifier.menuAnchor()
+                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                         )
                         ExposedDropdownMenu(
                             expanded = currencyExpanded,
@@ -244,7 +292,7 @@ fun AddTransactionDialog(
                         readOnly = true,
                         label = { Text("Category") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                     )
                     ExposedDropdownMenu(
                         expanded = categoryExpanded,
@@ -317,7 +365,7 @@ fun AddTransactionDialog(
                                     readOnly = true,
                                     label = { Text("Tax Category Schedule") },
                                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = taxCatExpanded) },
-                                    modifier = Modifier.fillMaxWidth().menuAnchor()
+                                    modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                                 )
                                 ExposedDropdownMenu(
                                     expanded = taxCatExpanded,
@@ -424,6 +472,132 @@ fun AddTransactionDialog(
                     }
                 }
 
+                // Store & Expense Location Tagging Section
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth().testTag("location_tagging_section")
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Place,
+                                    contentDescription = null,
+                                    tint = EmeraldPrimary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "Store & Expense Location",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Tag store or merchant for expense tracking & taxes",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = locationName,
+                            onValueChange = { locationName = it },
+                            label = { Text("Store / Merchant Location") },
+                            placeholder = { Text("e.g. Target Downtown, Whole Foods Market") },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Storefront,
+                                    contentDescription = null,
+                                    tint = EmeraldPrimary
+                                )
+                            },
+                            trailingIcon = {
+                                if (locationName.isNotBlank()) {
+                                    IconButton(onClick = {
+                                        locationName = ""
+                                        latitude = null
+                                        longitude = null
+                                    }) {
+                                        Icon(Icons.Default.Clear, contentDescription = "Clear location")
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().testTag("input_location_name")
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    if (LocationTracker.hasLocationPermission(context)) {
+                                        isLocating = true
+                                        coroutineScope.launch {
+                                            val loc = LocationTracker.getCurrentLocation(context)
+                                            if (loc != null) {
+                                                locationName = loc.placeName
+                                                latitude = loc.latitude
+                                                longitude = loc.longitude
+                                            }
+                                            isLocating = false
+                                        }
+                                    } else {
+                                        locationPermissionLauncher.launch(
+                                            arrayOf(
+                                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                                Manifest.permission.ACCESS_COARSE_LOCATION
+                                            )
+                                        )
+                                    }
+                                },
+                                enabled = !isLocating,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("btn_detect_current_location")
+                            ) {
+                                if (isLocating) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = EmeraldPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Detecting...", fontSize = 12.sp)
+                                } else {
+                                    Icon(
+                                        Icons.Default.MyLocation,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Auto-Tag GPS Location", fontSize = 12.sp)
+                                }
+                            }
+
+                            if (latitude != null && longitude != null) {
+                                Text(
+                                    text = String.format(Locale.US, "%.3f, %.3f", latitude, longitude),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage ?: "",
@@ -451,7 +625,10 @@ fun AddTransactionDialog(
                             selectedCurrency,
                             isTaxDeductible,
                             if (isTaxDeductible) taxCategory else "",
-                            receiptImagePath
+                            receiptImagePath,
+                            locationName,
+                            latitude,
+                            longitude
                         )
                     }
                 },
@@ -560,7 +737,7 @@ fun AddSubscriptionDialog(
                             readOnly = true,
                             label = { Text("Currency") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = currencyExpanded) },
-                            modifier = Modifier.menuAnchor()
+                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                         )
                         ExposedDropdownMenu(
                             expanded = currencyExpanded,
@@ -591,7 +768,7 @@ fun AddSubscriptionDialog(
                         readOnly = true,
                         label = { Text("Billing Cycle") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cycleExpanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                     )
                     ExposedDropdownMenu(
                         expanded = cycleExpanded,
@@ -711,7 +888,7 @@ fun AddBudgetDialog(
                         readOnly = true,
                         label = { Text("Category") },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
-                        modifier = Modifier.fillMaxWidth().menuAnchor()
+                        modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                     )
                     ExposedDropdownMenu(
                         expanded = categoryExpanded,

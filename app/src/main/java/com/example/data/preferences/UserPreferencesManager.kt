@@ -26,6 +26,9 @@ class UserPreferencesManager(private val context: Context) {
         val IS_DARK_MODE = booleanPreferencesKey("is_dark_mode")
         val BASE_CURRENCY = stringPreferencesKey("base_currency")
         val LOW_BALANCE_THRESHOLD = doublePreferencesKey("low_balance_threshold")
+        val IS_BALANCE_HIDDEN = booleanPreferencesKey("is_balance_hidden")
+        val IS_SCREEN_PRIVACY_ENABLED = booleanPreferencesKey("is_screen_privacy_enabled")
+        val AUTO_LOCK_TIMEOUT_SECONDS = androidx.datastore.preferences.core.intPreferencesKey("auto_lock_timeout_seconds")
     }
 
     val isDarkModeFlow: Flow<Boolean> = context.userDataStore.data
@@ -64,6 +67,42 @@ class UserPreferencesManager(private val context: Context) {
             preferences[PreferencesKeys.LOW_BALANCE_THRESHOLD] ?: 500.0
         }
 
+    val isBalanceHiddenFlow: Flow<Boolean> = context.userDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[PreferencesKeys.IS_BALANCE_HIDDEN] ?: false
+        }
+
+    val isScreenPrivacyEnabledFlow: Flow<Boolean> = context.userDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[PreferencesKeys.IS_SCREEN_PRIVACY_ENABLED] ?: false
+        }
+
+    val autoLockTimeoutSecondsFlow: Flow<Int> = context.userDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[PreferencesKeys.AUTO_LOCK_TIMEOUT_SECONDS] ?: 0
+        }
+
     suspend fun setDarkMode(isDark: Boolean) {
         context.userDataStore.edit { preferences ->
             preferences[PreferencesKeys.IS_DARK_MODE] = isDark
@@ -79,6 +118,24 @@ class UserPreferencesManager(private val context: Context) {
     suspend fun setLowBalanceThreshold(threshold: Double) {
         context.userDataStore.edit { preferences ->
             preferences[PreferencesKeys.LOW_BALANCE_THRESHOLD] = threshold
+        }
+    }
+
+    suspend fun setBalanceHidden(hidden: Boolean) {
+        context.userDataStore.edit { preferences ->
+            preferences[PreferencesKeys.IS_BALANCE_HIDDEN] = hidden
+        }
+    }
+
+    suspend fun setScreenPrivacyEnabled(enabled: Boolean) {
+        context.userDataStore.edit { preferences ->
+            preferences[PreferencesKeys.IS_SCREEN_PRIVACY_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setAutoLockTimeoutSeconds(seconds: Int) {
+        context.userDataStore.edit { preferences ->
+            preferences[PreferencesKeys.AUTO_LOCK_TIMEOUT_SECONDS] = seconds
         }
     }
 }

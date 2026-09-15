@@ -22,6 +22,12 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE isTaxDeductible = 1 ORDER BY date DESC")
     fun getTaxDeductibleTransactions(): Flow<List<TransactionEntity>>
 
+    @Query("SELECT * FROM transactions WHERE title LIKE '%' || :query || '%' OR notes LIKE '%' || :query || '%' OR category LIKE '%' || :query || '%' ORDER BY date DESC")
+    fun searchTransactions(query: String): Flow<List<TransactionEntity>>
+
+    @Query("SELECT * FROM transactions WHERE category = :category ORDER BY date DESC")
+    fun getTransactionsByCategory(category: String): Flow<List<TransactionEntity>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(transaction: TransactionEntity): Long
 

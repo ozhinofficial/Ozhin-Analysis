@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.CurrencyExchange
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.LightMode
@@ -12,6 +13,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.FinanceViewModel
 import com.example.ui.dialogs.AddTransactionDialog
+import com.example.ui.dialogs.MultiCurrencyDialog
 import com.example.ui.screens.AnalyticsScreen
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.ExportReportsScreen
@@ -68,9 +72,16 @@ fun FinanceApp(
     val lastSyncTimestamp by viewModel.lastSyncTimestamp.collectAsState()
     val isSyncing by viewModel.isSyncing.collectAsState()
     val syncMessage by viewModel.syncMessage.collectAsState()
+    val isBalanceHidden by viewModel.isBalanceHidden.collectAsState()
+    val isScreenPrivacyEnabled by viewModel.isScreenPrivacyEnabled.collectAsState()
+    val autoLockTimeoutSeconds by viewModel.autoLockTimeoutSeconds.collectAsState()
+    val totalIncome by viewModel.totalIncome.collectAsState()
+    val totalExpenses by viewModel.totalExpenses.collectAsState()
+    val netBalance by viewModel.netBalance.collectAsState()
 
     var currentTab by remember { mutableStateOf(FinanceTab.DASHBOARD) }
     var showAddTransactionDialog by remember { mutableStateOf(false) }
+    var showMultiCurrencyDialog by remember { mutableStateOf(false) }
 
     if (isLocked) {
         BiometricLockOverlay(
@@ -94,6 +105,26 @@ fun FinanceApp(
                         )
                     },
                     actions = {
+                        IconButton(
+                            onClick = { viewModel.toggleBalanceHidden() },
+                            modifier = Modifier.testTag("action_toggle_balance_shield")
+                        ) {
+                            Icon(
+                                imageVector = if (isBalanceHidden) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (isBalanceHidden) "Show Balances" else "Privacy Shield (Hide Balances)"
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { showMultiCurrencyDialog = true },
+                            modifier = Modifier.testTag("action_open_multi_currency")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CurrencyExchange,
+                                contentDescription = "Global Multi-Currency Converter"
+                            )
+                        }
+
                         IconButton(
                             onClick = { viewModel.toggleDarkMode() },
                             modifier = Modifier.testTag("action_toggle_dark")
@@ -155,7 +186,12 @@ fun FinanceApp(
                             lowBalanceThreshold = lowBalanceThreshold,
                             onAddTransactionClick = { showAddTransactionDialog = true },
                             onDeleteTransaction = { viewModel.deleteTransaction(it) },
-                            onNavigateToSubscriptions = { currentTab = FinanceTab.SUBSCRIPTIONS }
+                            onNavigateToSubscriptions = { currentTab = FinanceTab.SUBSCRIPTIONS },
+                            isBalanceHidden = isBalanceHidden,
+                            onToggleHideBalance = { viewModel.toggleBalanceHidden() },
+                            totalIncome = totalIncome,
+                            totalExpenses = totalExpenses,
+                            netBalance = netBalance
                         )
                     }
                     FinanceTab.ANALYTICS -> {
@@ -204,7 +240,14 @@ fun FinanceApp(
                             onSyncWithCloud = { viewModel.syncWithCloud() },
                             onRestoreFromCloud = { viewModel.restoreFromCloud() },
                             onTriggerTestNotification = { viewModel.triggerTestNotification() },
-                            authManager = viewModel.authManager
+                            authManager = viewModel.authManager,
+                            isBalanceHidden = isBalanceHidden,
+                            onToggleHideBalance = { viewModel.toggleBalanceHidden() },
+                            isScreenPrivacyEnabled = isScreenPrivacyEnabled,
+                            onToggleScreenPrivacy = { viewModel.toggleScreenPrivacy() },
+                            autoLockTimeoutSeconds = autoLockTimeoutSeconds,
+                            onSetAutoLockTimeout = { viewModel.setAutoLockTimeout(it) },
+                            onClearAllData = { viewModel.clearAllData() }
                         )
                     }
                 }
@@ -216,10 +259,16 @@ fun FinanceApp(
         AddTransactionDialog(
             baseCurrency = baseCurrency,
             onDismiss = { showAddTransactionDialog = false },
-            onSave = { title, amt, type, cat, notes, curr, isDeductible, taxCat, receiptPath ->
-                viewModel.addTransaction(title, amt, type, cat, notes, curr, isDeductible, taxCat, receiptPath)
+            onSave = { title, amt, type, cat, notes, curr, isDeductible, taxCat, receiptPath, locName, lat, lng ->
+                viewModel.addTransaction(title, amt, type, cat, notes, curr, isDeductible, taxCat, receiptPath, locName, lat, lng)
                 showAddTransactionDialog = false
             }
+        )
+    }
+
+    if (showMultiCurrencyDialog) {
+        MultiCurrencyDialog(
+            onDismiss = { showMultiCurrencyDialog = false }
         )
     }
 }

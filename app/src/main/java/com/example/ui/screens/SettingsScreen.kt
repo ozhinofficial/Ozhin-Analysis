@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,8 +41,10 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -65,6 +69,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.security.BiometricSecurityManager
+import com.example.ui.dialogs.MultiCurrencyDialog
 import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.WarningAmber
 import com.example.util.CloudSyncManager
@@ -90,6 +95,13 @@ fun SettingsScreen(
     onSyncWithCloud: () -> Unit,
     onRestoreFromCloud: () -> Unit,
     onTriggerTestNotification: () -> Unit,
+    isBalanceHidden: Boolean = false,
+    onToggleHideBalance: (Boolean) -> Unit = {},
+    isScreenPrivacyEnabled: Boolean = false,
+    onToggleScreenPrivacy: (Boolean) -> Unit = {},
+    autoLockTimeoutSeconds: Int = 0,
+    onSetAutoLockTimeout: (Int) -> Unit = {},
+    onClearAllData: () -> Unit = {},
     authManager: com.example.auth.AuthManager? = null,
     modifier: Modifier = Modifier
 ) {
@@ -99,6 +111,7 @@ fun SettingsScreen(
     var showAuthDialog by remember { mutableStateOf(false) }
 
     // Multi-Currency Live Converter Tool State
+    var showMultiCurrencyDialog by remember { mutableStateOf(false) }
     var converterAmount by remember { mutableStateOf("100") }
     var converterFrom by remember { mutableStateOf("USD") }
     var converterTo by remember { mutableStateOf("EUR") }
@@ -107,6 +120,7 @@ fun SettingsScreen(
 
     // PIN Setup Dialog
     var showPinDialog by remember { mutableStateOf(false) }
+    var showWipeConfirmDialog by remember { mutableStateOf(false) }
     var newPinInput by remember { mutableStateOf("") }
     var thresholdInput by remember { mutableStateOf(lowBalanceThreshold.toString()) }
 
@@ -405,6 +419,94 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
+                    // Privacy Mode: Mask Balances
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = EmeraldPrimary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(text = "Privacy Shield", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = "Mask amounts and balances with ••••••",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = isBalanceHidden,
+                            onCheckedChange = { onToggleHideBalance(it) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = EmeraldPrimary),
+                            modifier = Modifier.testTag("switch_mask_balance")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Screen Privacy: FLAG_SECURE
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Security, contentDescription = null, tint = EmeraldPrimary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(text = "Screen Privacy Protection", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = "Block screenshots & conceal preview in app switcher",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = isScreenPrivacyEnabled,
+                            onCheckedChange = { onToggleScreenPrivacy(it) },
+                            colors = SwitchDefaults.colors(checkedThumbColor = EmeraldPrimary),
+                            modifier = Modifier.testTag("switch_screen_privacy")
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Auto-Lock Timeout Selector
+                    Text(
+                        text = "Auto-Lock App When Backgrounded",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val timeouts = listOf(
+                            "Immediate" to 1,
+                            "30s" to 30,
+                            "1m" to 60,
+                            "5m" to 300,
+                            "Off" to 0
+                        )
+                        timeouts.forEach { (label, seconds) ->
+                            val isSelected = autoLockTimeoutSeconds == seconds
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onSetAutoLockTimeout(seconds) },
+                                label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                                modifier = Modifier.testTag("chip_autolock_$seconds")
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
                     // Action Buttons for PIN and Lock
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -428,6 +530,18 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Lock App")
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Wipe All Local Financial Data
+                    OutlinedButton(
+                        onClick = { showWipeConfirmDialog = true },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("btn_wipe_data")
+                    ) {
+                        Text("Wipe All Local Financial Data")
                     }
                 }
             }
@@ -482,7 +596,7 @@ fun SettingsScreen(
                             readOnly = true,
                             label = { Text("Primary Base Currency") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = baseCurrencyExpanded) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor().testTag("dropdown_base_currency")
+                            modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable, true).testTag("dropdown_base_currency")
                         )
                         ExposedDropdownMenu(
                             expanded = baseCurrencyExpanded,
@@ -535,7 +649,7 @@ fun SettingsScreen(
                                 onValueChange = {},
                                 readOnly = true,
                                 label = { Text("From") },
-                                modifier = Modifier.menuAnchor()
+                                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                             )
                             ExposedDropdownMenu(
                                 expanded = converterFromExpanded,
@@ -566,7 +680,7 @@ fun SettingsScreen(
                                 onValueChange = {},
                                 readOnly = true,
                                 label = { Text("To") },
-                                modifier = Modifier.menuAnchor()
+                                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                             )
                             ExposedDropdownMenu(
                                 expanded = converterToExpanded,
@@ -614,6 +728,24 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedButton(
+                        onClick = { showMultiCurrencyDialog = true },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("btn_open_global_multi_currency")
+                    ) {
+                        Icon(
+                            Icons.Default.CurrencyExchange,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Convert Totals Across All Global Currencies")
                     }
                 }
             }
@@ -783,6 +915,39 @@ fun SettingsScreen(
             authManager = authManager,
             onDismiss = { showAuthDialog = false },
             onAuthSuccess = { showAuthDialog = false }
+        )
+    }
+
+    if (showMultiCurrencyDialog) {
+        MultiCurrencyDialog(
+            onDismiss = { showMultiCurrencyDialog = false }
+        )
+    }
+
+    if (showWipeConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showWipeConfirmDialog = false },
+            title = { Text("Erase All Financial Data?") },
+            text = {
+                Text("This will permanently delete all your transactions, budgets, subscriptions, and receipts from this device. This action cannot be undone.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearAllData()
+                        showWipeConfirmDialog = false
+                        Toast.makeText(context, "All local financial records erased", Toast.LENGTH_LONG).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete Everything")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWipeConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
         )
     }
 }

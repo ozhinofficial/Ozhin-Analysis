@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import com.example.security.BiometricAuthenticator
 import com.example.security.BiometricSecurityManager
 import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.ExpenseRed
@@ -56,6 +57,7 @@ fun BiometricLockOverlay(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val authenticator = remember { BiometricAuthenticator.getInstance(context) }
     var enteredPin by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val savedPin = remember { BiometricSecurityManager.getPin(context) }
@@ -63,11 +65,14 @@ fun BiometricLockOverlay(
 
     fun triggerBiometrics() {
         val activity = context as? FragmentActivity
-        if (activity != null && BiometricSecurityManager.isBiometricSupported(context)) {
-            BiometricSecurityManager.promptBiometric(
+        if (activity != null && authenticator.canAuthenticate()) {
+            authenticator.authenticateForAppLaunch(
                 activity = activity,
-                onSuccess = {
+                onAuthenticated = {
                     onUnlock()
+                },
+                onFallbackToPasscode = {
+                    // User chose to enter PIN passcode instead
                 },
                 onError = { err ->
                     errorMessage = err
@@ -199,7 +204,7 @@ fun BiometricLockOverlay(
                                     modifier = Modifier.size(64.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.Backspace,
+                                        imageVector = Icons.AutoMirrored.Filled.Backspace,
                                         contentDescription = "Delete",
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
